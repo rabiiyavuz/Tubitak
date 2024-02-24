@@ -379,6 +379,9 @@ class RacingEnv:
         self.width = 1000
         self.height = 600
         self.history = []
+        
+
+        self.driver_health_status = True 
 
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("RACING DQN")
@@ -401,10 +404,29 @@ class RacingEnv:
         self.goals = getGoals()
         self.game_reward = 0
 
-    def step(self, action):
+    def step(self, action,lane_change=None, driver_health_status = True, traffic_condition="normal", nearby_hospital=False):
 
         done = False
         self.car.action(action)
+
+        if lane_change == "left":
+            action = 8  
+        elif lane_change == "right":
+            action = 7  
+        
+        if not self.driver_health_status:
+          
+            action = 0  
+            self.car.set_emergency_health_condition(True)  
+        if traffic_condition == "heavy":
+           
+            action = self.take_evading_action()
+
+     
+        if nearby_hospital:
+            
+            action = self.navigate_to_hospital()
+            
         self.car.update()
         reward = LIFE_REWARD
 
@@ -434,7 +456,17 @@ class RacingEnv:
             new_state = None
 
         return new_state, reward, done
+    
+    def take_evading_action(self):
+        
+        import random
+        return random.choice([1, 2, 3])  
 
+    def navigate_to_hospital(self):
+        
+        import random
+        return random.choice([4, 5, 6])
+    
     def render(self, action):
 
         DRAW_WALLS = False
@@ -513,6 +545,4 @@ class RacingEnv:
 
     def close(self):
         pygame.quit()
-
-
 

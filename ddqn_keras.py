@@ -67,7 +67,7 @@ class DDQNAgent(object):
     def remember(self, state, action, reward, new_state, done):
         self.memory.store_transition(state, action, reward, new_state, done)
 
-    def choose_action(self, state):
+    def choose_action(self, state,traffic_condition="normal", nearby_hospital=False,lane_change=None):
 
         state = np.array(state)
         state = state[np.newaxis, :]
@@ -76,34 +76,56 @@ class DDQNAgent(object):
         if rand < self.epsilon:
             action = np.random.choice(self.action_space)
         else:
-            actions = self.brain_eval.predict(state)
-            action = np.argmax(actions)
+            if traffic_condition == "heavy":
+                action = self.take_evading_action()
+            elif nearby_hospital:
+                action = self.navigate_to_hospital()
+            elif lane_change is not None:
+                
+                if lane_change == "left":
+                    action = 8 
+                elif lane_change == "right":
+                    action = 7  
+                else:
+                    action = 0  
+            else:
+                actions = self.brain_eval.predict(state)
+                action = np.argmax(actions)
+
 
         return action
 
-    def learn(self):
+    def learn(self, traffic_condition="normal", nearby_hospital=False):
         if self.memory.mem_cntr > self.batch_size:
-            state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
+           state, action, reward, new_state, done = self.memory.sample_buffer(self.batch_size)
 
-            action_values = np.array(self.action_space, dtype=np.int8)
-            action_indices = np.dot(action, action_values)
+           action_values = np.array(self.action_space, dtype=np.int8)
+           action_indices = np.dot(action, action_values)
 
-            q_next = self.brain_target.predict(new_state)
-            q_eval = self.brain_eval.predict(new_state)
-            q_pred = self.brain_eval.predict(state)
+           q_next = self.brain_target.predict(new_state)
+           q_eval = self.brain_eval.predict(new_state)
+           q_pred = self.brain_eval.predict(state)
 
-            max_actions = np.argmax(q_eval, axis=1)
+           if traffic_condition == "heavy":
+           
+                evading_action = self.take_evading_action()
+                max_actions = np.where(action == evading_action, evading_action, np.argmax(q_eval, axis=1))
+           elif nearby_hospital:
+                
+                hospital_action = self.navigate_to_hospital()
+                max_actions = np.where(action == hospital_action, hospital_action, np.argmax(q_eval, axis=1))
+           else:
+                max_actions = np.argmax(q_eval, axis=1)
 
-            q_target = q_pred
+           q_target = q_pred
 
-            batch_index = np.arange(self.batch_size, dtype=np.int32)
+           batch_index = np.arange(self.batch_size, dtype=np.int32)
 
-            q_target[batch_index, action_indices] = reward + self.gamma*q_next[batch_index, max_actions.astype(int)]*done
+           q_target[batch_index, action_indices] = reward + self.gamma * q_next[batch_index, max_actions.astype(int)] * done
 
-            _ = self.brain_eval.train(state, q_target)
+           _ = self.brain_eval.train(state, q_target)
 
-            self.epsilon = self.epsilon*self.epsilon_dec if self.epsilon > self.epsilon_min else self.epsilon_min
-
+           self.epsilon = self.epsilon * self.epsilon_dec if self.epsilon > self.epsilon_min else self.epsilon_min
 
     def update_network_parameters(self):
         self.brain_target.copy_weights(self.brain_eval)
